@@ -1,0 +1,6 @@
+{
+    "name": "Test Event",
+    "description": "This is a sample event for testing the API locally.",
+    "timestamp": "2025-04-05T12:00:00Z"
+  }
+  

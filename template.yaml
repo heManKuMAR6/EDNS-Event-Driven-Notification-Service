@@ -1,0 +1,108 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  Event-Driven Notification Service (EDNS) with multiple email and SMS subscriptions.
+  This service receives events via API Gateway, processes them with a Lambda function,
+  stores event details in S3 and DynamoDB, and sends notifications via SNS.
+
+Globals:
+  Function:
+    Timeout: 30
+
+Resources:
+  EDNSEventProcessorFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: lambda_function.lambda_handler
+      Runtime: python3.8
+      CodeUri: src/
+      Description: Processes incoming events, logs them, and sends SNS notifications.
+      MemorySize: 128
+      Environment:
+        Variables:
+          EVENT_BUCKET: !Ref EDNSEventDataBucket
+          EVENT_TABLE: !Ref EDNSEventTable
+          SNS_TOPIC_ARN: !Ref EDNSNotificationTopic
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - Statement:
+            - Effect: Allow
+              Action:
+                - s3:PutObject
+              Resource: !Sub "arn:aws:s3:::${EDNSEventDataBucket}/*"
+        - Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:PutItem
+              Resource: !GetAtt EDNSEventTable.Arn
+        - Statement:
+            - Effect: Allow
+              Action:
+                - sns:Publish
+              Resource: !Ref EDNSNotificationTopic
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            Path: /event
+            Method: post
+
+  EDNSEventDataBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: edns-event-data-bucket
+
+  EDNSEventTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: EDNSEventTable
+      AttributeDefinitions:
+        - AttributeName: eventId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: eventId
+          KeyType: HASH
+      BillingMode: PAY_PER_REQUEST
+
+  EDNSNotificationTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: EDNSNotificationTopic
+
+  # Email Subscriptions
+  EmailSubscription1:
+    Type: AWS::SNS::Subscription
+    Properties:
+      Protocol: email
+      Endpoint: "person1@example.com"
+      TopicArn: !Ref EDNSNotificationTopic
+
+  EmailSubscription2:
+    Type: AWS::SNS::Subscription
+    Properties:
+      Protocol: email
+      Endpoint: "person2@example.com"
+      TopicArn: !Ref EDNSNotificationTopic
+
+  # SMS Subscriptions
+  SmsSubscription1:
+    Type: AWS::SNS::Subscription
+    Properties:
+      Protocol: sms
+      Endpoint: "+15551234567"   # Replace with the phone number including country code
+      TopicArn: !Ref EDNSNotificationTopic
+
+  SmsSubscription2:
+    Type: AWS::SNS::Subscription
+    Properties:
+      Protocol: sms
+      Endpoint: "+15557654321"   # Replace with the phone number including country code
+      TopicArn: !Ref EDNSNotificationTopic
+
+Outputs:
+  ApiUrl:
+    Description: "API Gateway endpoint URL for event ingestion"
+    Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/event"
+  SnsTopic:
+    Description: "SNS Topic ARN for notifications"
+    Value: !Ref EDNSNotificationTopic
